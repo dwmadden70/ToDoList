@@ -1,0 +1,153 @@
+import math
+import customtkinter as ctk
+from PIL import Image, ImageDraw
+from todolist.config import COLORS
+
+
+_ICON_CACHE: dict[str, ctk.CTkImage] = {}
+
+
+def _render_icon(size: int, draw_fn) -> ctk.CTkImage:
+    """Renders a white icon at 4x resolution and downscales with LANCZOS."""
+    scale = 4
+    s = size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw_fn(draw, s)
+    crisp_img = img.resize((size, size), Image.Resampling.LANCZOS)
+    return ctk.CTkImage(light_image=crisp_img, dark_image=crisp_img, size=(size, size))
+
+
+def _render_gear_image(size: int, fill_color: str) -> Image.Image:
+    """Draws an 8-tooth vector gear at 4x supersampling with a transparent center hole."""
+    scale = 4
+    s = size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    cx = cy = s / 2
+    outer_r = s * 0.44
+    inner_r = s * 0.32
+    hole_r = s * 0.14
+    tooth_half_width = s * 0.065
+
+    # Draw 8 evenly spaced gear teeth
+    for i in range(8):
+        angle = math.radians(i * 45)
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        perp_x, perp_y = -sin_a * tooth_half_width, cos_a * tooth_half_width
+
+        r_start = inner_r * 0.85
+        r_end = outer_r
+
+        p1 = (cx + cos_a * r_start - perp_x, cy + sin_a * r_start - perp_y)
+        p2 = (cx + cos_a * r_end - perp_x, cy + sin_a * r_end - perp_y)
+        p3 = (cx + cos_a * r_end + perp_x, cy + sin_a * r_end + perp_y)
+        p4 = (cx + cos_a * r_start + perp_x, cy + sin_a * r_start + perp_y)
+        draw.polygon([p1, p2, p3, p4], fill=fill_color)
+
+    # Outer gear ring
+    draw.ellipse(
+        (cx - inner_r, cy - inner_r, cx + inner_r, cy + inner_r),
+        fill=fill_color,
+    )
+
+    # Punch out transparent center hole
+    draw.ellipse(
+        (cx - hole_r, cy - hole_r, cx + hole_r, cy + hole_r),
+        fill=(0, 0, 0, 0),
+    )
+
+    return img.resize((size, size), Image.Resampling.LANCZOS)
+
+
+def get_gear_icon(size: int = 16) -> ctk.CTkImage:
+    """Returns a crisp, theme-aware Gear CTkImage (dark ink in Light Mode, white in Dark Mode)."""
+    cache_key = f"gear_{size}"
+    if cache_key not in _ICON_CACHE:
+        light_color, dark_color = COLORS["text_active"]
+        light_img = _render_gear_image(size, light_color)
+        dark_img = _render_gear_image(size, dark_color)
+        _ICON_CACHE[cache_key] = ctk.CTkImage(
+            light_image=light_img,
+            dark_image=dark_img,
+            size=(size, size),
+        )
+    return _ICON_CACHE[cache_key]
+
+
+def get_pencil_icon(size: int = 16) -> ctk.CTkImage:
+    """Returns a crisp, supersampled white pencil CTkImage."""
+    cache_key = f"pencil_{size}"
+    if cache_key not in _ICON_CACHE:
+
+        def draw_pencil(draw: ImageDraw.ImageDraw, s: int) -> None:
+            body = [
+                (int(s * 0.22), int(s * 0.64)),
+                (int(s * 0.64), int(s * 0.22)),
+                (int(s * 0.78), int(s * 0.36)),
+                (int(s * 0.36), int(s * 0.78)),
+            ]
+            draw.polygon(body, fill="#ffffff")
+
+            eraser = [
+                (int(s * 0.68), int(s * 0.18)),
+                (int(s * 0.76), int(s * 0.10)),
+                (int(s * 0.90), int(s * 0.24)),
+                (int(s * 0.82), int(s * 0.32)),
+            ]
+            draw.polygon(eraser, fill="#ffffff")
+
+            tip = [
+                (int(s * 0.20), int(s * 0.68)),
+                (int(s * 0.32), int(s * 0.80)),
+                (int(s * 0.10), int(s * 0.90)),
+            ]
+            draw.polygon(tip, fill="#ffffff")
+
+        _ICON_CACHE[cache_key] = _render_icon(size, draw_pencil)
+    return _ICON_CACHE[cache_key]
+
+
+def get_check_icon(size: int = 16) -> ctk.CTkImage:
+    """Returns a crisp, supersampled white checkmark CTkImage."""
+    cache_key = f"check_{size}"
+    if cache_key not in _ICON_CACHE:
+
+        def draw_check(draw: ImageDraw.ImageDraw, s: int) -> None:
+            stroke = max(1, int(s * 0.14))
+            points = [
+                (int(s * 0.18), int(s * 0.52)),
+                (int(s * 0.40), int(s * 0.74)),
+                (int(s * 0.82), int(s * 0.26)),
+            ]
+            draw.line(points, fill="#ffffff", width=stroke, joint="curve")
+            r = stroke // 2
+            for x, y in (points[0], points[-1]):
+                draw.ellipse((x - r, y - r, x + r, y + r), fill="#ffffff")
+
+        _ICON_CACHE[cache_key] = _render_icon(size, draw_check)
+    return _ICON_CACHE[cache_key]
+
+
+def get_close_icon(size: int = 16) -> ctk.CTkImage:
+    """Returns a crisp, supersampled white X (delete) CTkImage."""
+    cache_key = f"close_{size}"
+    if cache_key not in _ICON_CACHE:
+
+        def draw_close(draw: ImageDraw.ImageDraw, s: int) -> None:
+            stroke = max(1, int(s * 0.14))
+            pad = int(s * 0.24)
+            end = s - pad
+            p1, p2 = (pad, pad), (end, end)
+            p3, p4 = (end, pad), (pad, end)
+
+            draw.line([p1, p2], fill="#ffffff", width=stroke)
+            draw.line([p3, p4], fill="#ffffff", width=stroke)
+
+            r = stroke // 2
+            for x, y in (p1, p2, p3, p4):
+                draw.ellipse((x - r, y - r, x + r, y + r), fill="#ffffff")
+
+        _ICON_CACHE[cache_key] = _render_icon(size, draw_close)
+    return _ICON_CACHE[cache_key]

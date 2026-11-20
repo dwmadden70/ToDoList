@@ -64,3 +64,10 @@ class TaskDatabase:
     def delete(self, task_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+    def update_title(self, task_id: int, new_title: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tasks SET title = ? WHERE id = ?",
+                (new_title, task_id),
+            )

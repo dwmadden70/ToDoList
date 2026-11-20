@@ -11,12 +11,14 @@ class SetupDialog(ctk.CTkToplevel):
         parent: ctk.CTk,
         current_header: str,
         current_theme: str,
-        on_save: Callable[[str, str], None],
+        confirm_delete: bool,
+        on_save: Callable[[str, str, bool], None],
     ) -> None:
         super().__init__(parent, fg_color=COLORS["window_bg"])
         self.on_save = on_save
         self._current_header = current_header
         self._selected_theme = current_theme.capitalize()
+        self._confirm_delete = confirm_delete
 
         self.title("Setup")
         self.resizable(False, False)
@@ -35,7 +37,7 @@ class SetupDialog(ctk.CTkToplevel):
 
     def _center_over_parent(self, parent: ctk.CTk) -> None:
         self.update_idletasks()
-        width, height = 340, 275
+        width, height = 340, 330
         parent.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (width // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (height // 2)
@@ -45,7 +47,7 @@ class SetupDialog(ctk.CTkToplevel):
         container = ctk.CTkFrame(self, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=24, pady=20)
 
-        # Custom Header Text Section
+        # 1. Custom Header Text Section
         header_lbl = ctk.CTkLabel(
             container,
             text="List Header",
@@ -68,7 +70,7 @@ class SetupDialog(ctk.CTkToplevel):
         self.header_entry.insert(0, self._current_header)
         self.header_entry.pack(fill="x", pady=(0, 16))
 
-        # Appearance Theme Section
+        # 2. Appearance Theme Section
         theme_lbl = ctk.CTkLabel(
             container,
             text="Appearance Theme",
@@ -91,8 +93,25 @@ class SetupDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(size=13, weight="bold"),
         )
         self.theme_selector.set(self._selected_theme)
-        self.theme_selector.pack(fill="x", pady=(0, 22))
+        self.theme_selector.pack(fill="x", pady=(0, 18))
         self._update_selector_contrast(self._selected_theme)
+
+        # 3. Delete Confirmation Toggle
+        self.confirm_var = ctk.BooleanVar(value=self._confirm_delete)
+        self.confirm_switch = ctk.CTkSwitch(
+            container,
+            text="Confirm before deleting items",
+            variable=self.confirm_var,
+            onvalue=True,
+            offvalue=False,
+            fg_color=COLORS["input_border"],
+            progress_color=COLORS["primary"],
+            button_color=COLORS["text_on_accent"],
+            button_hover_color=COLORS["row_bg"],
+            text_color=COLORS["text_active"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+        )
+        self.confirm_switch.pack(fill="x", pady=(0, 20))
 
         # Action buttons (Save / Cancel)
         btn_frame = ctk.CTkFrame(container, fg_color="transparent")
@@ -140,7 +159,7 @@ class SetupDialog(ctk.CTkToplevel):
 
     def _save(self) -> None:
         new_header = self.header_entry.get().strip() or APP_NAME
-        self.on_save(new_header, self._selected_theme.lower())
+        self.on_save(new_header, self._selected_theme.lower(), self.confirm_var.get())
         self.grab_release()
         self.destroy()
 
