@@ -1,3 +1,4 @@
+import tkinter as tk
 import customtkinter as ctk
 from todolist.config import (
     APP_NAME,
@@ -17,6 +18,77 @@ from todolist.ui.icons import get_app_icon_photo, get_gear_icon
 from todolist.ui.setup_dialog import SetupDialog
 
 
+class _Tooltip:
+    """Lightweight hover tooltip bound to a widget and its internal children."""
+
+    def __init__(self, widget: ctk.CTkBaseClass, text: str, delay_ms: int = 400) -> None:
+        self.widget = widget
+        self.text = text
+        self.delay_ms = delay_ms
+        self._after_id: str | None = None
+        self._tip_win: tk.Toplevel | None = None
+
+        self._bind_recursive(widget)
+
+    def _bind_recursive(self, target: tk.Misc) -> None:
+        target.bind("<Enter>", self._schedule, add="+")
+        target.bind("<Leave>", self._hide, add="+")
+        target.bind("<ButtonPress>", self._hide, add="+")
+        for child in target.winfo_children():
+            self._bind_recursive(child)
+
+    def _schedule(self, _event=None) -> None:
+        self._cancel()
+        self._after_id = self.widget.after(self.delay_ms, self._show)
+
+    def _cancel(self) -> None:
+        if self._after_id is not None:
+            try:
+                self.widget.after_cancel(self._after_id)
+            except tk.TclError:
+                pass
+            self._after_id = None
+
+    def _show(self) -> None:
+        if self._tip_win is not None or not self.widget.winfo_exists():
+            return
+        is_dark = ctk.get_appearance_mode().lower() == "dark"
+        bg = "#1f2937" if is_dark else "#111827"
+        fg = "#f9fafb"
+        border = "#374151" if is_dark else "#1f2937"
+
+        x = self.widget.winfo_rootx() + (self.widget.winfo_width() // 2) - 36
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+
+        self._tip_win = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_attributes("-topmost", True)
+        tw.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
+
+        lbl = tk.Label(
+            tw,
+            text=self.text,
+            background=bg,
+            foreground=fg,
+            relief="solid",
+            borderwidth=1,
+            highlightbackground=border,
+            padx=8,
+            pady=4,
+            font=("Segoe UI", 9),
+        )
+        lbl.pack()
+
+    def _hide(self, _event=None) -> None:
+        self._cancel()
+        if self._tip_win is not None:
+            try:
+                self._tip_win.destroy()
+            except tk.TclError:
+                pass
+            self._tip_win = None
+
+
 class TodoApp(ctk.CTk):
     """Main cross-platform application window with modal setup configuration."""
 
@@ -27,6 +99,7 @@ class TodoApp(ctk.CTk):
         self.header_text = self.db.get_setting("header_text", APP_NAME)
         self.current_theme = self.db.get_setting("theme", DEFAULT_THEME)
         self.confirm_delete = self.db.get_setting("confirm_delete", "1") == "1"
+        self._setup_dialog: SetupDialog | None = None
 
         self.title(APP_NAME)
         self.geometry(WINDOW_SIZE)
@@ -36,6 +109,9 @@ class TodoApp(ctk.CTk):
         self._configure_window_bounds()
         self._build_ui()
         self.refresh_list()
+
+        self.bind_all("<Alt-s>", self._on_alt_setup)
+        self.bind_all("<Alt-S>", self._on_alt_setup)
 
     def _set_window_icon(self) -> None:
         """Applies an in-memory rendered app icon across Windows, macOS, and Linux."""
@@ -75,6 +151,7 @@ class TodoApp(ctk.CTk):
             command=self._open_setup,
         )
         self.setup_btn.pack(side="right")
+        self._setup_tooltip = _Tooltip(self.setup_btn, "Alt-s")
 
         input_frame = ctk.CTkFrame(self, fg_color="transparent")
         input_frame.pack(fill="x", padx=20, pady=(12, 10))
@@ -135,15 +212,32 @@ class TodoApp(ctk.CTk):
         else:
             self.list_frame._scrollbar.grid()
 
+    def _is_setup_open(self) -> bool:
+        return (
+            self._setup_dialog is not None
+            and self._setup_dialog.winfo_exists()
+            and not getattr(self._setup_dialog, "_closing", False)
+        )
+
+    def _on_alt_setup(self, _event=None) -> str:
+        if self._is_setup_open():
+            return "break"
+        self._open_setup()
+        return "break"
+
     def _open_setup(self) -> None:
-        dialog = SetupDialog(
+        if self._is_setup_open():
+            return
+        self._setup_tooltip._hide()
+        self._setup_dialog = SetupDialog(
             parent=self,
             current_header=self.header_text,
             current_theme=self.current_theme,
             confirm_delete=self.confirm_delete,
             on_save=self._apply_settings,
         )
-        self.wait_window(dialog)
+        self.wait_window(self._setup_dialog)
+        self._setup_dialog = None
 
     def _apply_settings(
         self, new_header: str, new_theme: str, confirm_delete: bool
