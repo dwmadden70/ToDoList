@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 
 def generate_icons(assets_dir: Path) -> dict[str, Path]:
-    """Generates high-contrast app icons for Windows (.ico), macOS (.icns), and Linux (.png)."""
+    """Generates app icons for Windows (.ico), macOS (.icns), and Linux (.png)."""
     assets_dir.mkdir(parents=True, exist_ok=True)
 
     size = 256
@@ -25,7 +25,11 @@ def generate_icons(assets_dir: Path) -> dict[str, Path]:
     icns_path = assets_dir / "icon.icns"
     png_path = assets_dir / "icon.png"
 
-    img.save(ico_path, format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    img.save(
+        ico_path,
+        format="ICO",
+        sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
     img.save(icns_path, format="ICNS")
     img.save(png_path, format="PNG")
 
@@ -41,17 +45,15 @@ def main() -> None:
 
     icons = generate_icons(assets_dir)
 
-    # Create dist subfolders for all three platforms
     for subfolder in ("windows", "macos", "linux"):
         (dist_root / subfolder).mkdir(parents=True, exist_ok=True)
 
-    # Create the Windows regeneration executable script inside dist/
     bat_file = dist_root / "build_windows.bat"
     bat_file.write_text(
         "@echo off\r\n"
-        "cd /d \"%~dp0..\"\r\n"
-        "if exist \".venv\\Scripts\\python.exe\" (\r\n"
-        "    \".venv\\Scripts\\python.exe\" build.py\r\n"
+        'cd /d "%~dp0.."\r\n'
+        'if exist ".venv\\Scripts\\python.exe" (\r\n'
+        '    ".venv\\Scripts\\python.exe" build.py\r\n'
         ") else (\r\n"
         "    python build.py\r\n"
         ")\r\n"
@@ -69,9 +71,6 @@ def main() -> None:
     else:
         raise RuntimeError(f"Unsupported operating system: {system}")
 
-    # Bundle assets folder so the running window titlebar can also display the icon
-    data_sep = ";" if system == "windows" else ":"
-
     cmd = [
         sys.executable,
         "-m",
@@ -84,8 +83,6 @@ def main() -> None:
         "ToDoList",
         "--icon",
         str(icons[system]),
-        "--add-data",
-        f"{assets_dir}{data_sep}assets",
         "--collect-all",
         "customtkinter",
         "--distpath",
@@ -97,7 +94,7 @@ def main() -> None:
         str(entry_script),
     ]
 
-    print(f"Building ToDoList with icon for {system} -> {target_dir} ...")
+    print(f"Building ToDoList for {system} -> {target_dir} ...")
     subprocess.run(cmd, check=True)
 
     if work_dir.exists():

@@ -1,10 +1,40 @@
 import math
 import customtkinter as ctk
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageTk
 from todolist.config import COLORS
 
 
 _ICON_CACHE: dict[str, ctk.CTkImage] = {}
+
+
+def get_app_icon_photo(size: int = 64) -> ImageTk.PhotoImage:
+    """Generates the app titlebar icon in memory with zero file path lookups."""
+    scale = 4
+    s = size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # WCAG AAA deep blue rounded background (#1e3a8a)
+    pad = int(s * 0.05)
+    radius = int(s * 0.20)
+    draw.rounded_rectangle([(pad, pad), (s - pad, s - pad)], radius=radius, fill="#1e3a8a")
+
+    # Crisp white checkmark (#ffffff)
+    stroke = max(1, int(s * 0.10))
+    points = [
+        (int(s * 0.26), int(s * 0.52)),
+        (int(s * 0.43), int(s * 0.69)),
+        (int(s * 0.74), int(s * 0.33)),
+    ]
+    draw.line(points, fill="#ffffff", width=stroke, joint="curve")
+
+    start, _, end = points
+    r = stroke // 2
+    for x, y in (start, end):
+        draw.ellipse((x - r, y - r, x + r, y + r), fill="#ffffff")
+
+    crisp_img = img.resize((size, size), Image.Resampling.LANCZOS)
+    return ImageTk.PhotoImage(crisp_img)
 
 
 def _render_icon(size: int, draw_fn) -> ctk.CTkImage:
@@ -31,7 +61,6 @@ def _render_gear_image(size: int, fill_color: str) -> Image.Image:
     hole_r = s * 0.14
     tooth_half_width = s * 0.065
 
-    # Draw 8 evenly spaced gear teeth
     for i in range(8):
         angle = math.radians(i * 45)
         cos_a, sin_a = math.cos(angle), math.sin(angle)
@@ -46,13 +75,10 @@ def _render_gear_image(size: int, fill_color: str) -> Image.Image:
         p4 = (cx + cos_a * r_start + perp_x, cy + sin_a * r_start + perp_y)
         draw.polygon([p1, p2, p3, p4], fill=fill_color)
 
-    # Outer gear ring
     draw.ellipse(
         (cx - inner_r, cy - inner_r, cx + inner_r, cy + inner_r),
         fill=fill_color,
     )
-
-    # Punch out transparent center hole
     draw.ellipse(
         (cx - hole_r, cy - hole_r, cx + hole_r, cy + hole_r),
         fill=(0, 0, 0, 0),
@@ -62,7 +88,7 @@ def _render_gear_image(size: int, fill_color: str) -> Image.Image:
 
 
 def get_gear_icon(size: int = 16) -> ctk.CTkImage:
-    """Returns a crisp, theme-aware Gear CTkImage (dark ink in Light Mode, white in Dark Mode)."""
+    """Returns a crisp, theme-aware Gear CTkImage."""
     cache_key = f"gear_{size}"
     if cache_key not in _ICON_CACHE:
         light_color, dark_color = COLORS["text_active"]
@@ -122,8 +148,10 @@ def get_check_icon(size: int = 16) -> ctk.CTkImage:
                 (int(s * 0.82), int(s * 0.26)),
             ]
             draw.line(points, fill="#ffffff", width=stroke, joint="curve")
+
+            start, _, end = points
             r = stroke // 2
-            for x, y in (points[0], points[-1]):
+            for x, y in (start, end):
                 draw.ellipse((x - r, y - r, x + r, y + r), fill="#ffffff")
 
         _ICON_CACHE[cache_key] = _render_icon(size, draw_check)

@@ -1,5 +1,3 @@
-import sys
-from pathlib import Path
 import customtkinter as ctk
 from todolist.config import (
     APP_NAME,
@@ -15,7 +13,7 @@ from todolist.models import Task
 from todolist.ui.components import TaskRow
 from todolist.ui.confirm_dialog import ConfirmDeleteDialog
 from todolist.ui.edit_dialog import EditTaskDialog
-from todolist.ui.icons import get_gear_icon
+from todolist.ui.icons import get_app_icon_photo, get_gear_icon
 from todolist.ui.setup_dialog import SetupDialog
 
 
@@ -40,19 +38,9 @@ class TodoApp(ctk.CTk):
         self.refresh_list()
 
     def _set_window_icon(self) -> None:
-        """Applies the app icon to the window titlebar across Windows, Mac, and Linux."""
-        base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
-        ico_path = base_path / "assets" / "icon.ico"
-        png_path = base_path / "assets" / "icon.png"
-
-        try:
-            if sys.platform.startswith("win") and ico_path.exists():
-                self.iconbitmap(default=str(ico_path))
-            elif png_path.exists():
-                icon_img = ctk.CTkImage(light_image=png_path, size=(32, 32))
-                self.wm_iconphoto(True, icon_img._light_image)
-        except Exception:
-            pass
+        """Applies an in-memory rendered app icon across Windows, macOS, and Linux."""
+        self._icon_photo = get_app_icon_photo(64)
+        self.wm_iconphoto(True, self._icon_photo)
 
     def _configure_window_bounds(self) -> None:
         """Sets min size and caps width at 800px while allowing full usable OS height."""
