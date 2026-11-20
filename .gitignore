@@ -1,0 +1,35 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache & packaging artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+*.spec
+
+# Testing & linters
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local SQLite databases
+*.db
+*.sqlite3
+
+# Generated executables & icons (keep regeneration script)
+dist/*
+!dist/build_windows.bat
+assets/*.ico
+assets/*.icns
+assets/*.png
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
