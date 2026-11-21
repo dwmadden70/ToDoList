@@ -17,6 +17,9 @@ from todolist.ui.edit_dialog import EditTaskDialog
 from todolist.ui.icons import get_app_icon_photo, get_gear_icon
 from todolist.ui.setup_dialog import SetupDialog
 
+MAX_TASK_LENGTH = 500
+MAX_HEADER_LENGTH = 100
+
 
 class _Tooltip:
     """Lightweight hover tooltip bound to a widget and its internal children."""
@@ -37,7 +40,7 @@ class _Tooltip:
         for child in target.winfo_children():
             self._bind_recursive(child)
 
-    def _schedule(self, _event=None) -> None:
+    def _schedule(self, _event: tk.Event | None = None) -> None:
         self._cancel()
         self._after_id = self.widget.after(self.delay_ms, self._show)
 
@@ -57,13 +60,9 @@ class _Tooltip:
         fg = "#f9fafb"
         border = "#374151" if is_dark else "#1f2937"
 
-        x = self.widget.winfo_rootx() + (self.widget.winfo_width() // 2) - 36
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
-
         self._tip_win = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
         tw.wm_attributes("-topmost", True)
-        tw.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
 
         lbl = tk.Label(
             tw,
@@ -75,11 +74,20 @@ class _Tooltip:
             highlightbackground=border,
             padx=8,
             pady=4,
-            font=("Segoe UI", 9),
+            font=("TkDefaultFont", 9),
         )
         lbl.pack()
 
-    def _hide(self, _event=None) -> None:
+        tw.update_idletasks()
+        tip_width = tw.winfo_reqwidth()
+        screen_width = self.widget.winfo_screenwidth()
+
+        raw_x = self.widget.winfo_rootx() + (self.widget.winfo_width() // 2) - (tip_width // 2)
+        clamped_x = max(4, min(raw_x, screen_width - tip_width - 4))
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        tw.wm_geometry(f"+{clamped_x}+{max(0, y)}")
+
+    def _hide(self, _event: tk.Event | None = None) -> None:
         self._cancel()
         if self._tip_win is not None:
             try:
@@ -96,7 +104,7 @@ class TodoApp(ctk.CTk):
         super().__init__(fg_color=COLORS["window_bg"])
         self.db = db
 
-        self.header_text = self.db.get_setting("header_text", APP_NAME)
+        self.header_text = self.db.get_setting("header_text", APP_NAME)[:MAX_HEADER_LENGTH]
         self.current_theme = self.db.get_setting("theme", DEFAULT_THEME)
         self.confirm_delete = self.db.get_setting("confirm_delete", "1") == "1"
         self._setup_dialog: SetupDialog | None = None
@@ -110,8 +118,21 @@ class TodoApp(ctk.CTk):
         self._build_ui()
         self.refresh_list()
 
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind_all("<Alt-s>", self._on_alt_setup)
         self.bind_all("<Alt-S>", self._on_alt_setup)
+
+    def _on_close(self) -> None:
+        """Ensures any active modal overlay is destroyed cleanly before exiting."""
+        self._setup_tooltip._hide()
+        if self._setup_dialog is not None and self._setup_dialog.winfo_exists():
+            try:
+                self._setup_dialog.grab_release()
+                self._setup_dialog.destroy()
+            except tk.TclError:
+                pass
+            self._setup_dialog = None
+        self.destroy()
 
     def _set_window_icon(self) -> None:
         """Applies an in-memory rendered app icon across Windows, macOS, and Linux."""
@@ -193,7 +214,7 @@ class TodoApp(ctk.CTk):
         self.list_frame._parent_canvas.configure(highlightthickness=0)
         self.list_frame._parent_canvas.bind("<Configure>", self._on_list_resize)
 
-    def _on_list_resize(self, event) -> None:
+    def _on_list_resize(self, event: tk.Event) -> None:
         """Forces inner task rows to stretch full width and updates scrollbar visibility."""
         if self.list_frame._parent_canvas.find_all():
             self.list_frame._parent_canvas.itemconfigure(
@@ -219,14 +240,14 @@ class TodoApp(ctk.CTk):
             and not getattr(self._setup_dialog, "_closing", False)
         )
 
-    def _on_alt_setup(self, _event=None) -> str:
-        if self._is_setup_open():
+    def _on_alt_setup(self, _event: tk.Event | None = None) -> str:
+        if self._is_setup_open() or self.grab_current() is not None:
             return "break"
         self._open_setup()
         return "break"
 
     def _open_setup(self) -> None:
-        if self._is_setup_open():
+        if self._is_setup_open() or self.grab_current() is not None:
             return
         self._setup_tooltip._hide()
         self._setup_dialog = SetupDialog(
@@ -242,15 +263,16 @@ class TodoApp(ctk.CTk):
     def _apply_settings(
         self, new_header: str, new_theme: str, confirm_delete: bool
     ) -> None:
-        self.header_text = new_header
+        sanitized_header = (new_header.strip() or APP_NAME)[:MAX_HEADER_LENGTH]
+        self.header_text = sanitized_header
         self.current_theme = new_theme
         self.confirm_delete = confirm_delete
 
-        self.db.set_setting("header_text", new_header)
+        self.db.set_setting("header_text", sanitized_header)
         self.db.set_setting("theme", new_theme)
         self.db.set_setting("confirm_delete", "1" if confirm_delete else "0")
 
-        self.title_label.configure(text=new_header)
+        self.title_label.configure(text=sanitized_header)
         ctk.set_appearance_mode(new_theme)
 
     def refresh_list(self) -> None:
@@ -270,7 +292,7 @@ class TodoApp(ctk.CTk):
         self.after(10, self._update_scrollbar)
 
     def add_task(self) -> None:
-        text = self.task_entry.get().strip()
+        text = self.task_entry.get().strip()[:MAX_TASK_LENGTH]
         if not text:
             return
         self.db.add(text)
@@ -290,7 +312,10 @@ class TodoApp(ctk.CTk):
         self.wait_window(dialog)
 
     def _save_edited_task(self, task_id: int, new_title: str) -> None:
-        self.db.update_title(task_id, new_title)
+        sanitized_title = new_title.strip()[:MAX_TASK_LENGTH]
+        if not sanitized_title:
+            return
+        self.db.update_title(task_id, sanitized_title)
         self.refresh_list()
 
     def delete_task(self, task: Task) -> None:
