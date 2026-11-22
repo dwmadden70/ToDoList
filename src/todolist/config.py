@@ -6,6 +6,10 @@ MIN_HEIGHT = 560
 MAX_WIDTH = 800
 WINDOW_SIZE = f"{MIN_WIDTH}x{MIN_HEIGHT}"
 DEFAULT_THEME = "light"
+VALID_THEMES = ("light", "dark")
+
+MAX_TASK_LENGTH = 500
+MAX_HEADER_LENGTH = 100
 
 # Cross-platform storage path in the user's home directory
 DB_PATH = Path.home() / ".todolist.db"
