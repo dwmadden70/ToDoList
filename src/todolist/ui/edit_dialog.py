@@ -1,10 +1,8 @@
 import tkinter as tk
 from typing import Callable
 import customtkinter as ctk
-from todolist.config import COLORS
+from todolist.config import COLORS, MAX_TASK_LENGTH
 from todolist.models import Task
-
-MAX_TASK_LENGTH = 500
 
 
 class EditTaskDialog(ctk.CTkFrame):
@@ -30,13 +28,15 @@ class EditTaskDialog(ctk.CTkFrame):
         self._guard_widget_focus(self)
         self._configure_keyboard_navigation()
 
+        self._escape_bind_id = parent.bind("<Escape>", lambda _: self._cancel(), add="+")
         self.grab_set()
-        self.after(10, self._focus_initial_entry)
+        self.after(10, self._focus_entry_with_selection)
 
-    def _focus_initial_entry(self) -> None:
+    def _focus_entry_with_selection(self) -> None:
+        if self._closing or not self.winfo_exists():
+            return
         self._set_focus_index(0)
-        if not self._closing and self.task_entry.winfo_exists():
-            self.task_entry.select_range(0, "end")
+        self.task_entry.select_range(0, "end")
 
     def _guard_widget_focus(self, widget: tk.Misc) -> None:
         """Prevents CustomTkinter delayed focus_set callbacks from failing after destroy."""
@@ -60,7 +60,12 @@ class EditTaskDialog(ctk.CTkFrame):
             return
         self._closing = True
 
-        for seq in ("<Escape>", "<Tab>", "<Shift-Tab>", "<space>", "<Return>"):
+        if hasattr(self, "_escape_bind_id"):
+            try:
+                self.parent.unbind("<Escape>", self._escape_bind_id)
+            except Exception:
+                pass
+        for seq in ("<Tab>", "<Shift-Tab>", "<space>", "<Return>"):
             try:
                 self.parent.unbind(seq)
             except Exception:
@@ -101,12 +106,12 @@ class EditTaskDialog(ctk.CTkFrame):
 
         lbl = ctk.CTkLabel(
             container,
-            text="Edit Task",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            text="Task Description",
+            font=ctk.CTkFont(size=15, weight="bold"),
             text_color=COLORS["text_active"],
             anchor="w",
         )
-        lbl.pack(fill="x", pady=(0, 10))
+        lbl.pack(fill="x", pady=(0, 8))
 
         self.task_entry = ctk.CTkEntry(
             container,
@@ -159,13 +164,13 @@ class EditTaskDialog(ctk.CTkFrame):
         for target in self._focus_targets:
             tk.Widget.configure(target, takefocus=True)
 
+        self.parent.bind("<Tab>", lambda _: self._set_focus_index(self._focus_index + 1) or "break")
+        self.parent.bind("<Shift-Tab>", lambda _: self._set_focus_index(self._focus_index - 1) or "break")
+
         entry_target.bind("<Button-1>", lambda _: self._set_focus_index(0), add="+")
         self.cancel_btn._canvas.bind("<Button-1>", lambda _: self._set_focus_index(1), add="+")
         self.save_btn._canvas.bind("<Button-1>", lambda _: self._set_focus_index(2), add="+")
 
-        self.parent.bind("<Escape>", lambda _: self._cancel())
-        self.parent.bind("<Tab>", lambda _: self._set_focus_index(self._focus_index + 1) or "break")
-        self.parent.bind("<Shift-Tab>", lambda _: self._set_focus_index(self._focus_index - 1) or "break")
         self.parent.bind("<space>", self._on_space_key)
         self.parent.bind("<Return>", self._on_return_key)
 
@@ -176,16 +181,21 @@ class EditTaskDialog(ctk.CTkFrame):
         target = self._focus_targets[self._focus_index]
         if target.winfo_exists():
             target.focus_set()
+        self._update_focus_visuals()
 
-        self.task_entry.configure(
-            border_color=COLORS["text_active"] if self._focus_index == 0 else COLORS["input_border"]
-        )
-        self.cancel_btn.configure(
-            border_color=COLORS["text_active"] if self._focus_index == 1 else COLORS["input_border"]
-        )
-        self.save_btn.configure(
-            border_color=COLORS["text_active"] if self._focus_index == 2 else COLORS["primary"]
-        )
+    def _update_focus_visuals(self) -> None:
+        if self._closing or not self.winfo_exists():
+            return
+        self.task_entry.configure(border_color=COLORS["input_border"])
+        self.cancel_btn.configure(border_color=COLORS["input_border"])
+        self.save_btn.configure(border_color=COLORS["primary"])
+
+        if self._focus_index == 0:
+            self.task_entry.configure(border_color=COLORS["text_active"])
+        elif self._focus_index == 1:
+            self.cancel_btn.configure(border_color=COLORS["text_active"])
+        elif self._focus_index == 2:
+            self.save_btn.configure(border_color=COLORS["text_active"])
 
     def _on_space_key(self, _event: tk.Event | None = None) -> str | None:
         if self._focus_index == 0:
@@ -209,9 +219,8 @@ class EditTaskDialog(ctk.CTkFrame):
         updated_text = self.task_entry.get().strip()[:MAX_TASK_LENGTH]
         if not updated_text:
             return
-        task_id = self.task.id
         self._cleanup_and_close()
-        self.on_save(task_id, updated_text)
+        self.on_save(self.task.id, updated_text)
 
     def _cancel(self) -> None:
         self._cleanup_and_close()

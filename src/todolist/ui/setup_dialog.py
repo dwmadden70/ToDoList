@@ -1,7 +1,7 @@
 import tkinter as tk
 from typing import Callable
 import customtkinter as ctk
-from todolist.config import APP_NAME, COLORS
+from todolist.config import APP_NAME, COLORS, MAX_HEADER_LENGTH
 
 
 class SetupDialog(ctk.CTkFrame):
@@ -18,7 +18,7 @@ class SetupDialog(ctk.CTkFrame):
         super().__init__(parent, fg_color=COLORS["window_bg"], corner_radius=0)
         self.parent = parent
         self.on_save = on_save
-        self._current_header = current_header
+        self._current_header = current_header[:MAX_HEADER_LENGTH]
         self._initial_theme = current_theme.capitalize()
         self._selected_theme = self._initial_theme
         self._confirm_delete = confirm_delete
@@ -246,7 +246,7 @@ class SetupDialog(ctk.CTkFrame):
         self.confirm_var.set(not self.confirm_var.get())
         self._update_switch_contrast()
 
-    def _on_space_key(self, _event=None) -> str | None:
+    def _on_space_key(self, _event: tk.Event | None = None) -> str | None:
         if self._focus_index == 0:
             return None
         if self._focus_index == 1:
@@ -259,7 +259,7 @@ class SetupDialog(ctk.CTkFrame):
             self._save()
         return "break"
 
-    def _on_return_key(self, _event=None) -> str:
+    def _on_return_key(self, _event: tk.Event | None = None) -> str:
         if self._focus_index == 1:
             self._set_theme("Dark" if self._selected_theme == "Light" else "Light")
         elif self._focus_index == 2:
@@ -288,7 +288,7 @@ class SetupDialog(ctk.CTkFrame):
     def _save(self) -> None:
         if self._closing:
             return
-        new_header = self.header_entry.get().strip() or APP_NAME
+        new_header = (self.header_entry.get().strip() or APP_NAME)[:MAX_HEADER_LENGTH]
         selected_theme = self._selected_theme.lower()
         confirm_delete = self.confirm_var.get()
         self._cleanup_and_close()

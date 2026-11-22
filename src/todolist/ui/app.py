@@ -4,9 +4,12 @@ from todolist.config import (
     APP_NAME,
     COLORS,
     DEFAULT_THEME,
+    MAX_HEADER_LENGTH,
+    MAX_TASK_LENGTH,
     MAX_WIDTH,
     MIN_HEIGHT,
     MIN_WIDTH,
+    VALID_THEMES,
     WINDOW_SIZE,
 )
 from todolist.database import TaskDatabase
@@ -17,9 +20,6 @@ from todolist.ui.edit_dialog import EditTaskDialog
 from todolist.ui.icons import get_app_icon_photo, get_gear_icon
 from todolist.ui.setup_dialog import SetupDialog
 
-MAX_TASK_LENGTH = 500
-MAX_HEADER_LENGTH = 100
-
 
 class TodoApp(ctk.CTk):
     """Main cross-platform application window with modal setup configuration."""
@@ -29,7 +29,8 @@ class TodoApp(ctk.CTk):
         self.db = db
 
         self.header_text = self.db.get_setting("header_text", APP_NAME)[:MAX_HEADER_LENGTH]
-        self.current_theme = self.db.get_setting("theme", DEFAULT_THEME)
+        raw_theme = self.db.get_setting("theme", DEFAULT_THEME).lower()
+        self.current_theme = raw_theme if raw_theme in VALID_THEMES else DEFAULT_THEME
         self.confirm_delete = self.db.get_setting("confirm_delete", "1") == "1"
         self._active_modal: ctk.CTkFrame | None = None
 
@@ -192,16 +193,17 @@ class TodoApp(ctk.CTk):
         self, new_header: str, new_theme: str, confirm_delete: bool
     ) -> None:
         sanitized_header = (new_header.strip() or APP_NAME)[:MAX_HEADER_LENGTH]
+        sanitized_theme = new_theme if new_theme in VALID_THEMES else DEFAULT_THEME
         self.header_text = sanitized_header
-        self.current_theme = new_theme
+        self.current_theme = sanitized_theme
         self.confirm_delete = confirm_delete
 
         self.db.set_setting("header_text", sanitized_header)
-        self.db.set_setting("theme", new_theme)
+        self.db.set_setting("theme", sanitized_theme)
         self.db.set_setting("confirm_delete", "1" if confirm_delete else "0")
 
         self.title_label.configure(text=sanitized_header)
-        ctk.set_appearance_mode(new_theme)
+        ctk.set_appearance_mode(sanitized_theme)
 
     def refresh_list(self) -> None:
         y_top, _ = self.list_frame._parent_canvas.yview()
