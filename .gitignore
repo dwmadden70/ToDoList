@@ -33,3 +33,10 @@ assets/*.png
 .idea/
 .DS_Store
 Thumbs.db
+ToDoList-Windows.exe
+
+# Local application databases
+*.db
+*.sqlite
+*.sqlite3
+

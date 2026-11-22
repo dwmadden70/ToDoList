@@ -84,6 +84,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Ensure no database files exist before build
+        run: find . -maxdepth 3 \( -name "*.db" -o -name "*.sqlite" -o -name "*.sqlite3" \) -delete
+        shell: bash
+
       - name: Build executable with build.py
         run: python build.py
 
