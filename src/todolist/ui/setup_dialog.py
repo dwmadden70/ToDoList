@@ -29,22 +29,29 @@ class SetupDialog(ctk.CTkFrame):
         self.lift()
 
         self._build_ui()
+        self._guard_widget_focus(self)
         self._configure_keyboard_navigation()
 
         self._escape_bind_id = parent.bind("<Escape>", lambda _: self._cancel(), add="+")
         self.grab_set()
         self.after(10, lambda: self._set_focus_index(0))
 
-    def _cancel_pending_afters(self, widget: tk.Misc) -> None:
+    def _guard_widget_focus(self, widget: tk.Misc) -> None:
+        """Prevents CustomTkinter delayed focus_set callbacks from failing after destroy."""
+        orig_focus_set = widget.focus_set
+
+        def safe_focus_set() -> None:
+            if self._closing:
+                return
+            try:
+                if widget.winfo_exists():
+                    orig_focus_set()
+            except tk.TclError:
+                pass
+
+        widget.focus_set = safe_focus_set  # type: ignore[method-assign]
         for child in widget.winfo_children():
-            self._cancel_pending_afters(child)
-        try:
-            for after_id in self.tk.call("after", "info"):
-                info = self.tk.call("after", "info", after_id)
-                if info and str(widget) in str(info[0]):
-                    self.after_cancel(after_id)
-        except tk.TclError:
-            pass
+            self._guard_widget_focus(child)
 
     def _cleanup_and_close(self) -> None:
         if self._closing:
@@ -67,13 +74,11 @@ class SetupDialog(ctk.CTkFrame):
             pass
 
         self.place_forget()
-        self._cancel_pending_afters(self)
-        self.after(150, self._finalize_destroy)
+        self.after(200, self._finalize_destroy)
 
     def _finalize_destroy(self) -> None:
         try:
             if self.winfo_exists():
-                self._cancel_pending_afters(self)
                 self.destroy()
         except tk.TclError:
             pass
