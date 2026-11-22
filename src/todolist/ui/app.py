@@ -11,7 +11,7 @@ from todolist.config import (
 )
 from todolist.database import TaskDatabase
 from todolist.models import Task
-from todolist.ui.components import TaskRow
+from todolist.ui.components import TaskRow, Tooltip
 from todolist.ui.confirm_dialog import ConfirmDeleteDialog
 from todolist.ui.edit_dialog import EditTaskDialog
 from todolist.ui.icons import get_app_icon_photo, get_gear_icon
@@ -19,82 +19,6 @@ from todolist.ui.setup_dialog import SetupDialog
 
 MAX_TASK_LENGTH = 500
 MAX_HEADER_LENGTH = 100
-
-
-class _Tooltip:
-    """Lightweight hover tooltip bound to a widget and its internal children."""
-
-    def __init__(self, widget: ctk.CTkBaseClass, text: str, delay_ms: int = 400) -> None:
-        self.widget = widget
-        self.text = text
-        self.delay_ms = delay_ms
-        self._after_id: str | None = None
-        self._tip_win: tk.Toplevel | None = None
-
-        self._bind_recursive(widget)
-
-    def _bind_recursive(self, target: tk.Misc) -> None:
-        target.bind("<Enter>", self._schedule, add="+")
-        target.bind("<Leave>", self._hide, add="+")
-        target.bind("<ButtonPress>", self._hide, add="+")
-        for child in target.winfo_children():
-            self._bind_recursive(child)
-
-    def _schedule(self, _event: tk.Event | None = None) -> None:
-        self._cancel()
-        self._after_id = self.widget.after(self.delay_ms, self._show)
-
-    def _cancel(self) -> None:
-        if self._after_id is not None:
-            try:
-                self.widget.after_cancel(self._after_id)
-            except tk.TclError:
-                pass
-            self._after_id = None
-
-    def _show(self) -> None:
-        if self._tip_win is not None or not self.widget.winfo_exists():
-            return
-        is_dark = ctk.get_appearance_mode().lower() == "dark"
-        bg = "#1f2937" if is_dark else "#111827"
-        fg = "#f9fafb"
-        border = "#374151" if is_dark else "#1f2937"
-
-        self._tip_win = tw = tk.Toplevel(self.widget)
-        tw.wm_overrideredirect(True)
-        tw.wm_attributes("-topmost", True)
-
-        lbl = tk.Label(
-            tw,
-            text=self.text,
-            background=bg,
-            foreground=fg,
-            relief="solid",
-            borderwidth=1,
-            highlightbackground=border,
-            padx=8,
-            pady=4,
-            font=("TkDefaultFont", 9),
-        )
-        lbl.pack()
-
-        tw.update_idletasks()
-        tip_width = tw.winfo_reqwidth()
-        screen_width = self.widget.winfo_screenwidth()
-
-        raw_x = self.widget.winfo_rootx() + (self.widget.winfo_width() // 2) - (tip_width // 2)
-        clamped_x = max(4, min(raw_x, screen_width - tip_width - 4))
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
-        tw.wm_geometry(f"+{clamped_x}+{max(0, y)}")
-
-    def _hide(self, _event: tk.Event | None = None) -> None:
-        self._cancel()
-        if self._tip_win is not None:
-            try:
-                self._tip_win.destroy()
-            except tk.TclError:
-                pass
-            self._tip_win = None
 
 
 class TodoApp(ctk.CTk):
@@ -107,7 +31,7 @@ class TodoApp(ctk.CTk):
         self.header_text = self.db.get_setting("header_text", APP_NAME)[:MAX_HEADER_LENGTH]
         self.current_theme = self.db.get_setting("theme", DEFAULT_THEME)
         self.confirm_delete = self.db.get_setting("confirm_delete", "1") == "1"
-        self._setup_dialog: SetupDialog | None = None
+        self._active_modal: ctk.CTkFrame | None = None
 
         self.title(APP_NAME)
         self.geometry(WINDOW_SIZE)
@@ -124,14 +48,14 @@ class TodoApp(ctk.CTk):
 
     def _on_close(self) -> None:
         """Ensures any active modal overlay is destroyed cleanly before exiting."""
-        self._setup_tooltip._hide()
-        if self._setup_dialog is not None and self._setup_dialog.winfo_exists():
+        self._setup_tooltip.hide()
+        if self._active_modal is not None and self._active_modal.winfo_exists():
             try:
-                self._setup_dialog.grab_release()
-                self._setup_dialog.destroy()
+                self._active_modal.grab_release()
+                self._active_modal.destroy()
             except tk.TclError:
                 pass
-            self._setup_dialog = None
+            self._active_modal = None
         self.destroy()
 
     def _set_window_icon(self) -> None:
@@ -172,7 +96,7 @@ class TodoApp(ctk.CTk):
             command=self._open_setup,
         )
         self.setup_btn.pack(side="right")
-        self._setup_tooltip = _Tooltip(self.setup_btn, "Alt-s")
+        self._setup_tooltip = Tooltip(self.setup_btn, "Alt-s")
 
         input_frame = ctk.CTkFrame(self, fg_color="transparent")
         input_frame.pack(fill="x", padx=20, pady=(12, 10))
@@ -233,32 +157,36 @@ class TodoApp(ctk.CTk):
         else:
             self.list_frame._scrollbar.grid()
 
-    def _is_setup_open(self) -> bool:
+    def _is_modal_open(self) -> bool:
         return (
-            self._setup_dialog is not None
-            and self._setup_dialog.winfo_exists()
-            and not getattr(self._setup_dialog, "_closing", False)
+            self._active_modal is not None
+            and self._active_modal.winfo_exists()
+            and not getattr(self._active_modal, "_closing", False)
         )
 
+    def _show_modal(self, dialog: ctk.CTkFrame) -> None:
+        self._active_modal = dialog
+        self.wait_window(dialog)
+        self._active_modal = None
+
     def _on_alt_setup(self, _event: tk.Event | None = None) -> str:
-        if self._is_setup_open() or self.grab_current() is not None:
+        if self._is_modal_open() or self.grab_current() is not None:
             return "break"
         self._open_setup()
         return "break"
 
     def _open_setup(self) -> None:
-        if self._is_setup_open() or self.grab_current() is not None:
+        if self._is_modal_open() or self.grab_current() is not None:
             return
-        self._setup_tooltip._hide()
-        self._setup_dialog = SetupDialog(
+        self._setup_tooltip.hide()
+        dialog = SetupDialog(
             parent=self,
             current_header=self.header_text,
             current_theme=self.current_theme,
             confirm_delete=self.confirm_delete,
             on_save=self._apply_settings,
         )
-        self.wait_window(self._setup_dialog)
-        self._setup_dialog = None
+        self._show_modal(dialog)
 
     def _apply_settings(
         self, new_header: str, new_theme: str, confirm_delete: bool
@@ -276,6 +204,8 @@ class TodoApp(ctk.CTk):
         ctk.set_appearance_mode(new_theme)
 
     def refresh_list(self) -> None:
+        y_top, _ = self.list_frame._parent_canvas.yview()
+
         for widget in self.list_frame.winfo_children():
             widget.destroy()
 
@@ -289,7 +219,11 @@ class TodoApp(ctk.CTk):
             )
             row.pack(fill="x", pady=4, padx=0)
 
-        self.after(10, self._update_scrollbar)
+        self.after(10, lambda: self._restore_scroll(y_top))
+
+    def _restore_scroll(self, y_top: float) -> None:
+        self._update_scrollbar()
+        self.list_frame._parent_canvas.yview_moveto(y_top)
 
     def add_task(self) -> None:
         text = self.task_entry.get().strip()[:MAX_TASK_LENGTH]
@@ -304,12 +238,14 @@ class TodoApp(ctk.CTk):
         self.refresh_list()
 
     def edit_task(self, task: Task) -> None:
+        if self._is_modal_open():
+            return
         dialog = EditTaskDialog(
             parent=self,
             task=task,
             on_save=self._save_edited_task,
         )
-        self.wait_window(dialog)
+        self._show_modal(dialog)
 
     def _save_edited_task(self, task_id: int, new_title: str) -> None:
         sanitized_title = new_title.strip()[:MAX_TASK_LENGTH]
@@ -322,13 +258,15 @@ class TodoApp(ctk.CTk):
         if not self.confirm_delete:
             self._confirm_delete_task(task.id)
             return
+        if self._is_modal_open():
+            return
 
         dialog = ConfirmDeleteDialog(
             parent=self,
             task=task,
             on_confirm=self._confirm_delete_task,
         )
-        self.wait_window(dialog)
+        self._show_modal(dialog)
 
     def _confirm_delete_task(self, task_id: int) -> None:
         self.db.delete(task_id)
