@@ -1,11 +1,15 @@
 name: CI & Release
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, master]
     tags: ["v*"]
   pull_request:
     branches: [main, master]
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -24,11 +28,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: "pip"
 
       - name: Install system dependencies (Tkinter & Xvfb)
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk xvfb
+          sudo apt-get install -y --no-install-recommends python3-tk xvfb
 
       - name: Install project and test dependencies
         run: |
@@ -42,7 +47,7 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -53,7 +58,7 @@ jobs:
             artifact_path: dist/windows/ToDoList.exe
           - os: macos-latest
             artifact_name: ToDoList-macOS
-            artifact_path: dist/macos/ToDoList.app
+            artifact_path: dist/macos/ToDoList-macOS.tar.gz
           - os: ubuntu-latest
             artifact_name: ToDoList-Linux
             artifact_path: dist/linux/ToDoList
@@ -66,12 +71,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install Linux Tkinter dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk binutils
+          sudo apt-get install -y --no-install-recommends python3-tk binutils
 
       - name: Install build dependencies
         run: |
@@ -80,6 +86,10 @@ jobs:
 
       - name: Build executable with build.py
         run: python build.py
+
+      - name: Archive macOS app bundle
+        if: runner.os == 'macOS'
+        run: tar -czf dist/macos/ToDoList-macOS.tar.gz -C dist/macos ToDoList.app
 
       - name: Upload platform artifact
         uses: actions/upload-artifact@v4
@@ -102,18 +112,19 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Package release assets
+      - name: Prepare release assets
         run: |
           mkdir -p dist-release
           cp release-artifacts/ToDoList-Windows/ToDoList.exe dist-release/ToDoList-Windows.exe
           cp release-artifacts/ToDoList-Linux/ToDoList dist-release/ToDoList-Linux
+          cp release-artifacts/ToDoList-macOS/ToDoList-macOS.tar.gz dist-release/ToDoList-macOS.tar.gz
           chmod +x dist-release/ToDoList-Linux
-          tar -czf dist-release/ToDoList-macOS.tar.gz -C release-artifacts/ToDoList-macOS ToDoList.app
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             dist-release/ToDoList-Windows.exe
             dist-release/ToDoList-macOS.tar.gz
