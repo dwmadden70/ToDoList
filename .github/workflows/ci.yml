@@ -3,10 +3,10 @@ name: CI & Release
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, develop]
     tags: ["v*"]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, develop]
 
 permissions:
   contents: read
