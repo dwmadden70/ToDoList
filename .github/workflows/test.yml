@@ -1,38 +1,120 @@
-name: Run Tests
+name: CI & Release
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
+    tags: ["v*"]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   test:
+    name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
 
       - name: Install system dependencies (Tkinter & Xvfb)
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-tk xvfb
 
-      - name: Install project and dev dependencies
+      - name: Install project and test dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run pytest with Xvfb
+      - name: Run pytest under Xvfb
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" pytest -v
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: ToDoList-Windows
+            artifact_path: dist/windows/ToDoList.exe
+          - os: macos-latest
+            artifact_name: ToDoList-macOS
+            artifact_path: dist/macos/ToDoList.app
+          - os: ubuntu-latest
+            artifact_name: ToDoList-Linux
+            artifact_path: dist/linux/ToDoList
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux Tkinter dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk binutils
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Build executable with build.py
+        run: python build.py
+
+      - name: Upload platform artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Package release assets
+        run: |
+          mkdir -p dist-release
+          cp release-artifacts/ToDoList-Windows/ToDoList.exe dist-release/ToDoList-Windows.exe
+          cp release-artifacts/ToDoList-Linux/ToDoList dist-release/ToDoList-Linux
+          chmod +x dist-release/ToDoList-Linux
+          tar -czf dist-release/ToDoList-macOS.tar.gz -C release-artifacts/ToDoList-macOS ToDoList.app
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist-release/ToDoList-Windows.exe
+            dist-release/ToDoList-macOS.tar.gz
+            dist-release/ToDoList-Linux

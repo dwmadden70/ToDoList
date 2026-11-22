@@ -97,6 +97,12 @@ def main() -> None:
     print(f"Building ToDoList for {system} -> {target_dir} ...")
     subprocess.run(cmd, check=True)
 
+    if system == "darwin":
+        app_bundle = target_dir / "ToDoList.app"
+        raw_binary = target_dir / "ToDoList"
+        if app_bundle.exists() and raw_binary.exists():
+            raw_binary.unlink()
+
     if work_dir.exists():
         shutil.rmtree(work_dir, ignore_errors=True)
 
