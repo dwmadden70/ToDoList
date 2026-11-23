@@ -3,9 +3,14 @@ name: CI & Release
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev]
+    branches: ["**"]
+    tags: ["**"]
   pull_request:
     branches: [main, dev]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
